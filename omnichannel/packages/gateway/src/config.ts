@@ -3,28 +3,46 @@ import { resolve } from 'node:path'
 
 import { parse as parseYaml } from 'yaml'
 
-import type { CapabilitySet, OmnichannelPluginId } from '@omnichannel/core'
+import type { CapabilitySet, OmniDispatchAction, OmnichannelPluginId } from '@omnichannel/core'
+
+export interface ChannelConfig {
+  plugin: OmnichannelPluginId
+  /** Discord: guild text / thread channel snowflake to subscribe to. */
+  discordChannelId?: string
+  /** Discord: optional bot token on this channel (see also top-level `discord.token`). */
+  token?: string
+}
 
 export interface GatewayYaml {
+  /**
+   * Optional Discord defaults. `discord.token` is checked before `DISCORD_BOT_TOKEN`
+   * (or `gateway.discordBotTokenEnv`).
+   */
+  discord?: {
+    token?: string
+  }
   gateway: {
     httpPort: number
-    /** Unix socket path. Relative paths are resolved against `process.cwd()`. */
     ipcSocketPath: string
     dbPath: string
     sharedSecret?: string | null
-    /** Ingress queue row TTL in seconds (default 86400). */
     queueTtlSeconds?: number
+    /** Env var name for the Discord bot token (default `DISCORD_BOT_TOKEN`). */
+    discordBotTokenEnv?: string
+    /** Reply-handle row TTL in seconds (default 604800 = 7d). */
+    replyHandleTtlSeconds?: number
   }
-  channels: Record<
-    string,
-    {
-      plugin: OmnichannelPluginId
-    }
-  >
+  channels: Record<string, ChannelConfig>
 }
 
 export interface LoadedConfig extends GatewayYaml {
   configPath: string
+}
+
+function actionsForPlugin(plugin: OmnichannelPluginId): OmniDispatchAction[] {
+  if (plugin === 'generic_webhook') return ['noop']
+  if (plugin === 'discord') return ['reply', 'react', 'ack', 'noop']
+  return ['reply', 'react', 'ack', 'resolve', 'noop']
 }
 
 function capabilityForChannel(
@@ -38,9 +56,7 @@ function capabilityForChannel(
     plugin,
     ingress,
     egress,
-    actions: egress
-      ? (['reply', 'react', 'ack', 'resolve', 'noop'] as const)
-      : (['noop'] as const),
+    actions: actionsForPlugin(plugin),
   }
 }
 
@@ -50,7 +66,6 @@ export function getCapabilities(config: LoadedConfig): CapabilitySet[] {
   )
 }
 
-/** Resolve `gateway.ipcSocketPath`: absolute as-is; relative paths use `process.cwd()`. */
 export function resolveGatewayIpcSocketPath(config: LoadedConfig): string {
   const raw = config.gateway.ipcSocketPath.trim()
   if (!raw) {
@@ -58,6 +73,21 @@ export function resolveGatewayIpcSocketPath(config: LoadedConfig): string {
   }
   if (raw.startsWith('/')) return raw
   return resolve(process.cwd(), raw)
+}
+
+export function getDiscordBotToken(config: LoadedConfig): string | null {
+  const top = config.discord?.token?.trim()
+  if (top) return top
+
+  for (const ch of Object.values(config.channels)) {
+    if (ch.plugin === 'discord' && ch.token?.trim()) {
+      return ch.token.trim()
+    }
+  }
+
+  const envName = config.gateway.discordBotTokenEnv ?? 'DISCORD_BOT_TOKEN'
+  const fromEnv = process.env[envName]?.trim()
+  return fromEnv || null
 }
 
 export function loadConfig(path?: string): LoadedConfig {
@@ -80,5 +110,16 @@ export function loadConfig(path?: string): LoadedConfig {
   if (!doc.channels || typeof doc.channels !== 'object') {
     throw new Error('omnichannel gateway: omni.yaml must define channels')
   }
+
+  for (const [name, ch] of Object.entries(doc.channels)) {
+    if (ch.plugin === 'discord') {
+      if (!ch.discordChannelId?.trim()) {
+        throw new Error(
+          `omnichannel gateway: channels.${name} (discord) requires discordChannelId`,
+        )
+      }
+    }
+  }
+
   return { ...doc, configPath }
 }

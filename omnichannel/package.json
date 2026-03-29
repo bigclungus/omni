@@ -2,13 +2,14 @@
   "name": "omnichannel",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "packages/channels/*"],
   "scripts": {
     "test": "bun test packages/core tests/integration",
     "test:core": "bun test packages/core",
     "test:integration": "bun test tests/integration",
     "gateway": "bun run packages/gateway/src/index.ts",
     "mcp": "bun run packages/mcp-server/src/index.ts",
+    "claude-channel": "bun run packages/claude-channel/src/start.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

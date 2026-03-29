@@ -1,11 +1,29 @@
 # Copy to omni.yaml. `ipcSocketPath` is resolved against the process cwd (run `bun run gateway` from the project dir).
+#
+# Discord bot token resolution (first match wins):
+#   1) `discord.token` below
+#   2) `token` on a `plugin: discord` channel
+#   3) env: DISCORD_BOT_TOKEN (or `gateway.discordBotTokenEnv`)
+discord:
+  # token: "your-bot-token"
+
 gateway:
   httpPort: 8080
   ipcSocketPath: ./omni-gateway.sock
   dbPath: ./data/omni.sqlite
   sharedSecret: null
   queueTtlSeconds: 86400
+  # discordBotTokenEnv: DISCORD_BOT_TOKEN   # env var name for fallback token (default DISCORD_BOT_TOKEN)
+  # replyHandleTtlSeconds: 604800           # reply routing cache TTL (default 7d)
 
 channels:
   demo:
     plugin: generic_webhook
+
+  # Discord (package: `packages/channels/discord`).
+  # If you see "Used disallowed intents": Developer Portal → Bot → Privileged Gateway Intents →
+  # enable MESSAGE CONTENT INTENT (required to read message text). Guilds + GuildMessages + GuildMessageReactions are non-privileged.
+  # discord-lounge:
+  #   plugin: discord
+  #   discordChannelId: "1234567890123456789"
+  #   # token: "optional override; otherwise use top-level discord.token or DISCORD_BOT_TOKEN"

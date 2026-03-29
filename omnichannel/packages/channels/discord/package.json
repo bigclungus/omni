@@ -1,13 +1,12 @@
 {
-  "name": "@omnichannel/gateway",
+  "name": "@omnichannel/channel-discord",
   "version": "0.0.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@omnichannel/channel-discord": "workspace:*",
     "@omnichannel/core": "workspace:*",
-    "yaml": "^2.8.0"
+    "discord.js": "^14.25.1"
   }
 }

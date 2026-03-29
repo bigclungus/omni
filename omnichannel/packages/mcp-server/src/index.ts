@@ -6,11 +6,33 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { validateOmniDispatch } from '@omnichannel/core'
+import { validateOmniDispatch, type OmnichannelEvent } from '@omnichannel/core'
 import { z } from 'zod'
 
 import { OmniIpcClient } from './ipc-client.ts'
 import { resolveIpcSocketPath } from './resolve-socket-path.ts'
+
+/** Claude Code channel extension — not in stock MCP SDK notification typings. */
+const CHANNEL_NOTIFY_METHOD = 'notifications/claude/channel' as const
+
+function eventToChannelParams(event: OmnichannelEvent): {
+  content: string
+  meta: Record<string, string>
+} {
+  const content =
+    typeof event.payload === 'string'
+      ? event.payload
+      : JSON.stringify(event.payload, null, 2)
+  return {
+    content,
+    meta: {
+      event_id: event.id,
+      channel_id: event.channelId,
+      plugin: String(event.plugin),
+      received_at: event.receivedAt,
+    },
+  }
+}
 
 const omniContextInput = z.object({})
 
@@ -26,18 +48,41 @@ async function main(): Promise<void> {
 
   const mcp = new McpServer(
     { name: 'omnichannel', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: {
+        tools: {},
+        experimental: {
+          // https://code.claude.com/docs/en/channels-reference — registers channel listener
+          'claude/channel': {},
+        },
+      },
+      instructions:
+        'Omnichannel events arrive as <channel source="omnichannel" event_id="..." channel_id="..." plugin="...">. ' +
+        'They are two-way: use `omni_context` to see channels and valid actions; use `omni_dispatch` with the ' +
+        '`reply_handle` from the event payload (when present) to reply or react on the originating platform.',
+    },
   )
+
+  const pendingChannelEvents: OmnichannelEvent[] = []
+  let channelNotifyReady = false
+
+  const pushChannelEvent = (event: OmnichannelEvent) => {
+    const { content, meta } = eventToChannelParams(event)
+    void mcp.server.notification({
+      method: CHANNEL_NOTIFY_METHOD,
+      params: { content, meta },
+    } as Parameters<typeof mcp.server.notification>[0])
+  }
 
   const ipc = new OmniIpcClient({
     socketPath,
     token,
     onEvent: event => {
-      void mcp.sendLoggingMessage({
-        level: 'info',
-        logger: 'omnichannel',
-        data: { omnichannel: 'event', event },
-      })
+      if (!channelNotifyReady) {
+        pendingChannelEvents.push(event)
+        return
+      }
+      pushChannelEvent(event)
     },
   })
 
@@ -101,13 +146,27 @@ async function main(): Promise<void> {
           isError: true,
         }
       }
+      const r = await ipc.dispatch({
+        replyHandle: v.value.replyHandle,
+        action: v.value.action,
+        args: v.value.args,
+      })
+      if (!r.ok) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: r.error ?? 'dispatch failed',
+            },
+          ],
+          isError: true,
+        }
+      }
       return {
         content: [
           {
             type: 'text',
-            text:
-              'Payload is valid. Phase 1 generic_webhook is ingress-only; outbound delivery and reply routing arrive in later phases. ' +
-              `Validated action=${v.value.action} replyHandle=${v.value.replyHandle}`,
+            text: r.detail ?? 'ok',
           },
         ],
       }
@@ -116,8 +175,11 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport()
   await mcp.connect(transport)
+  channelNotifyReady = true
+  for (const e of pendingChannelEvents) pushChannelEvent(e)
+  pendingChannelEvents.length = 0
 
-  process.stderr.write(`omnichannel mcp: IPC ready (stdio MCP)\n`)
+  process.stderr.write(`omnichannel mcp: IPC ready (stdio MCP + claude/channel)\n`)
 }
 
 main().catch(err => {

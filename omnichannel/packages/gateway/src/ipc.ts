@@ -6,21 +6,34 @@ import type { CapabilitySet, OmnichannelEvent } from '@omnichannel/core'
 
 import type { LoadedConfig } from './config.ts'
 
+export type IpcDispatchInbound = {
+  replyHandle: string
+  action: string
+  args: Record<string, unknown>
+}
+
 export type IpcInbound =
   | { type: 'hello'; token?: string; version?: number }
   | { type: 'get_context' }
+  | { type: 'dispatch'; replyHandle: string; action: string; args: Record<string, unknown> }
 
 export type IpcOutbound =
   | { type: 'hello_ack' }
   | { type: 'error'; message: string }
   | { type: 'context'; channels: CapabilitySet[] }
   | { type: 'event'; event: OmnichannelEvent }
+  | { type: 'dispatch_ack'; ok: boolean; detail?: string; error?: string }
+
+export type DispatchResult =
+  | { ok: true; detail?: string }
+  | { ok: false; error: string }
 
 export interface IpcHubOptions {
   socketPath: string
   sharedSecret?: string | null
   getCapabilities: () => CapabilitySet[]
   onClientReady?: () => void
+  onDispatch?: (input: IpcDispatchInbound) => Promise<DispatchResult>
 }
 
 export class IpcHub {
@@ -152,6 +165,49 @@ export class IpcHub {
       return
     }
 
+    if (m.type === 'dispatch') {
+      if (!this.sockets.has(socket)) {
+        this.send(socket, {
+          type: 'error',
+          message: 'send hello before dispatch',
+        })
+        return
+      }
+      const replyHandle = m.replyHandle
+      const action = m.action
+      const args = m.args
+      if (
+        typeof replyHandle !== 'string' ||
+        typeof action !== 'string' ||
+        !args ||
+        typeof args !== 'object'
+      ) {
+        this.send(socket, {
+          type: 'dispatch_ack',
+          ok: false,
+          error: 'invalid dispatch payload',
+        })
+        return
+      }
+      const onDispatch = this.options.onDispatch
+      if (!onDispatch) {
+        this.send(socket, {
+          type: 'dispatch_ack',
+          ok: false,
+          error: 'dispatch not enabled',
+        })
+        return
+      }
+      void onDispatch({ replyHandle, action, args }).then(r => {
+        if (r.ok) {
+          this.send(socket, { type: 'dispatch_ack', ok: true, detail: r.detail })
+        } else {
+          this.send(socket, { type: 'dispatch_ack', ok: false, error: r.error })
+        }
+      })
+      return
+    }
+
     this.send(socket, {
       type: 'error',
       message: `unknown type: ${String((m as { type: string }).type)}`,
@@ -163,16 +219,18 @@ export class IpcHub {
   }
 }
 
-export function createIpcHub(
-  config: LoadedConfig,
-  socketPath: string,
-  getCapabilities: () => CapabilitySet[],
-  onClientReady?: () => void,
-): IpcHub {
+export function createIpcHub(opts: {
+  config: LoadedConfig
+  socketPath: string
+  getCapabilities: () => CapabilitySet[]
+  onClientReady?: () => void
+  onDispatch?: (input: IpcDispatchInbound) => Promise<DispatchResult>
+}): IpcHub {
   return new IpcHub({
-    socketPath,
-    sharedSecret: config.gateway.sharedSecret,
-    getCapabilities,
-    onClientReady,
+    socketPath: opts.socketPath,
+    sharedSecret: opts.config.gateway.sharedSecret,
+    getCapabilities: opts.getCapabilities,
+    onClientReady: opts.onClientReady,
+    onDispatch: opts.onDispatch,
   })
 }

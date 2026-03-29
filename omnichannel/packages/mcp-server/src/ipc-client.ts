@@ -79,6 +79,32 @@ export class OmniIpcClient {
     }
   }
 
+  async dispatch(payload: {
+    replyHandle: string
+    action: string
+    args: Record<string, unknown>
+  }): Promise<{ ok: boolean; detail?: string; error?: string }> {
+    if (!this.socket) throw new Error('IPC not connected')
+    const req: IpcInbound = {
+      type: 'dispatch',
+      replyHandle: payload.replyHandle,
+      action: payload.action,
+      args: payload.args,
+    }
+    this.socket.write(`${JSON.stringify(req)}\n`)
+    while (true) {
+      const msg = await this.nextControl()
+      if (msg.type === 'dispatch_ack') {
+        return {
+          ok: msg.ok,
+          detail: msg.detail,
+          error: msg.error,
+        }
+      }
+      if (msg.type === 'error') throw new Error(msg.message)
+    }
+  }
+
   close(): void {
     this.socket?.destroy()
     this.socket = null
