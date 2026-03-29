@@ -1,9 +1,14 @@
 import {
+  ChannelType,
   Client,
   GatewayIntentBits,
   Partials,
   type Message,
+  type MessageReaction,
+  type PartialMessageReaction,
+  type PartialUser,
   type ThreadChannel,
+  type User,
 } from 'discord.js'
 
 import type { OmnichannelEvent } from '@omnibot/core'
@@ -29,11 +34,50 @@ export interface StartDiscordBotOptions {
   debugLog?: GatewayDebugLogger
 }
 
-function buildDiscordMessagePayload(
+function buildThreadInfo(msg: Message): Record<string, unknown> | null {
+  const isThread =
+    msg.channel.type === ChannelType.PublicThread ||
+    msg.channel.type === ChannelType.PrivateThread ||
+    msg.channel.type === ChannelType.AnnouncementThread
+  if (!isThread) return null
+  return {
+    id: msg.channelId,
+    name: (msg.channel as ThreadChannel).name,
+    parentId: (msg.channel as ThreadChannel).parentId,
+  }
+}
+
+async function fetchReferencedMessage(msg: Message): Promise<Record<string, unknown> | null> {
+  const refId = msg.reference?.messageId
+  if (!refId) return null
+  try {
+    const refMsg = await msg.channel.messages.fetch(refId)
+    return {
+      id: refMsg.id,
+      text: refMsg.content,
+      author: { id: refMsg.author.id, username: refMsg.author.username },
+      timestamp: refMsg.createdAt.toISOString(),
+    }
+  } catch {
+    return null
+  }
+}
+
+async function buildDiscordMessagePayload(
   msg: Message,
   replyHandle: string,
   omniChannelId: string,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
+  const thread = buildThreadInfo(msg)
+  const referencedMessage = await fetchReferencedMessage(msg)
+
+  const attachments = [...msg.attachments.values()].map(a => ({
+    name: a.name,
+    contentType: a.contentType,
+    size: a.size,
+    url: a.url,
+  }))
+
   return {
     replyHandle,
     text: msg.content ?? '',
@@ -46,6 +90,9 @@ function buildDiscordMessagePayload(
     messageId: msg.id,
     guildId: msg.guildId,
     omniChannelId,
+    ...(thread ? { thread } : {}),
+    ...(referencedMessage ? { referencedMessage } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
     discord: {
       channelId: msg.channelId,
       messageId: msg.id,
@@ -59,7 +106,7 @@ export function createDiscordClient(): Client {
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
-      /** Privileged: enable “Message Content Intent” in the Discord Developer Portal (Bot tab). */
+      /** Privileged: enable "Message Content Intent" in the Discord Developer Portal (Bot tab). */
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.GuildMessageReactions,
     ],
@@ -89,16 +136,25 @@ export async function startDiscordBot(
     discordChannelIds: [...discordChannels.keys()],
   })
 
-  client.on('messageCreate', (msg: Message) => {
+  function lookupOmniChannel(channelId: string, channel: { isThread?: () => boolean }): string | undefined {
+    const lookupId = channel.isThread?.()
+      ? ((channel as ThreadChannel).parentId ?? channelId)
+      : channelId
+    return discordChannels.get(lookupId)
+  }
+
+  function emitEvent(event: OmnichannelEvent, expiresAt: number): void {
+    store.insertQueuedEvent(event, expiresAt)
+    if (hub.clientCount > 0) {
+      hub.broadcastEvent(event)
+      store.deleteQueuedEvent(event.id)
+    }
+  }
+
+  client.on('messageCreate', async (msg: Message) => {
     if (msg.author.bot) return
 
-    // For threads, look up by the parent channel ID so that threads off a
-    // configured channel are routed to the same omni channel.
-    const lookupChannelId = msg.channel.isThread()
-      ? ((msg.channel as ThreadChannel).parentId ?? msg.channelId)
-      : msg.channelId
-
-    const omniChannelId = discordChannels.get(lookupChannelId)
+    const omniChannelId = lookupOmniChannel(msg.channelId, msg.channel)
     if (!omniChannelId) return
 
     const replyHandle = newReplyHandleId()
@@ -110,22 +166,16 @@ export async function startDiscordBot(
     }
 
     const expiresAt = Date.now() + replyHandleTtlMs
-    store.insertReplyHandle(
-      replyHandle,
-      omniChannelId,
-      JSON.stringify(route),
-      expiresAt,
-    )
+    store.insertReplyHandle(replyHandle, omniChannelId, JSON.stringify(route), expiresAt)
 
+    const payload = await buildDiscordMessagePayload(msg, replyHandle, omniChannelId)
     const event: OmnichannelEvent = {
       id: crypto.randomUUID(),
       channelId: omniChannelId,
       plugin: 'channel-discord',
       receivedAt: new Date().toISOString(),
-      payload: buildDiscordMessagePayload(msg, replyHandle, omniChannelId),
+      payload,
     }
-
-    store.insertQueuedEvent(event, expiresAt)
 
     dlog?.log('discord', 'messageCreate → omnichannel event', {
       omniChannelId,
@@ -136,9 +186,95 @@ export async function startDiscordBot(
       broadcast: hub.clientCount > 0,
     })
 
-    if (hub.clientCount > 0) {
-      hub.broadcastEvent(event)
-      store.deleteQueuedEvent(event.id)
+    emitEvent(event, expiresAt)
+  })
+
+  client.on('messageReactionAdd', async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
+    try {
+      if (user.bot) return
+
+      if (reaction.partial) {
+        try { await reaction.fetch() } catch { return }
+      }
+      if (user.partial) {
+        try { await user.fetch() } catch { return }
+      }
+
+      const msg = reaction.message.partial
+        ? await reaction.message.fetch().catch(() => null)
+        : reaction.message
+      if (!msg) return
+
+      const omniChannelId = lookupOmniChannel(msg.channelId, msg.channel)
+      if (!omniChannelId) return
+
+      const thread = buildThreadInfo(msg)
+      const referencedMessage = await fetchReferencedMessage(msg)
+
+      const attachments = [...msg.attachments.values()].map(a => ({
+        name: a.name,
+        contentType: a.contentType,
+        size: a.size,
+      }))
+
+      const replyHandle = newReplyHandleId()
+      const route: DiscordRouteData = {
+        kind: 'discord',
+        guildId: msg.guildId ?? '',
+        channelId: msg.channelId,
+        messageId: msg.id,
+      }
+
+      const expiresAt = Date.now() + replyHandleTtlMs
+      store.insertReplyHandle(replyHandle, omniChannelId, JSON.stringify(route), expiresAt)
+
+      const event: OmnichannelEvent = {
+        id: crypto.randomUUID(),
+        channelId: omniChannelId,
+        plugin: 'channel-discord',
+        receivedAt: new Date().toISOString(),
+        payload: {
+          replyHandle,
+          kind: 'reaction',
+          emoji: reaction.emoji.toString(),
+          reactor: {
+            id: user.id,
+            username: (user as User).username,
+          },
+          message: {
+            id: msg.id,
+            text: msg.content || '',
+            author: {
+              id: msg.author?.id,
+              username: msg.author?.username,
+            },
+            timestamp: msg.createdAt.toISOString(),
+            ...(attachments.length > 0 ? { attachments } : {}),
+            ...(referencedMessage ? { referencedMessage } : {}),
+          },
+          channelId: msg.channelId,
+          guildId: msg.guildId,
+          omniChannelId,
+          ...(thread ? { thread } : {}),
+          discord: {
+            channelId: msg.channelId,
+            messageId: msg.id,
+            guildId: msg.guildId,
+          },
+        },
+      }
+
+      dlog?.log('discord', 'messageReactionAdd → omnichannel event', {
+        omniChannelId,
+        discordChannelId: msg.channelId,
+        messageId: msg.id,
+        emoji: reaction.emoji.toString(),
+        reactor: user.id,
+      })
+
+      emitEvent(event, expiresAt)
+    } catch (err) {
+      process.stderr.write(`omnichannel channel-discord: messageReactionAdd error: ${err}\n`)
     }
   })
 
