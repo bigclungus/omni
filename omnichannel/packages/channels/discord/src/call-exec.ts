@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import type { Client } from 'discord.js'
 
 import type { CallResult } from '@omnibot/gateway'
@@ -76,26 +79,23 @@ async function downloadAttachment(
   }
 
   const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
-  const isText = contentType.startsWith('text/') ||
-    contentType.includes('json') ||
-    contentType.includes('xml') ||
-    contentType.includes('javascript') ||
-    contentType.includes('yaml')
 
-  if (isText) {
-    const text = await res.text()
-    return { ok: true, data: { contentType, encoding: 'text', content: text } }
-  }
+  // Derive a safe filename from the URL, preserving extension
+  const urlPath = new URL(url).pathname
+  const originalName = urlPath.split('/').pop() ?? 'attachment'
+  const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const filePath = join(tmpdir(), `omni_${crypto.randomUUID()}_${safeName}`)
 
   const buf = await res.arrayBuffer()
-  const base64 = Buffer.from(buf).toString('base64')
+  await Bun.write(filePath, buf)
+
   return {
     ok: true,
     data: {
+      filePath,
       contentType,
-      encoding: 'base64',
-      content: base64,
       size: buf.byteLength,
+      originalName,
     },
   }
 }
