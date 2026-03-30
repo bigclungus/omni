@@ -135,7 +135,13 @@ async function main(): Promise<void> {
     config: cfg,
     debugLog,
     getCapabilities: () => {
-      const caps = getCapabilitySetsForChannels(cfg.channels)
+      const callsByPluginId = new Map<string, string[]>()
+      for (let i = 0; i < plugins.length; i++) {
+        const p = plugins[i]
+        const label = pluginLabels[i]
+        if (p?.calls?.length && label) callsByPluginId.set(label, p.calls)
+      }
+      const caps = getCapabilitySetsForChannels(cfg.channels, callsByPluginId)
       debugLog.log('cli', 'getCapabilities()', caps)
       return caps
     },
@@ -176,6 +182,20 @@ async function main(): Promise<void> {
       }
       debugLog.log('dispatch', 'no plugin handled route')
       return { ok: false, error: 'no egress for this route' }
+    },
+    onCall: async (d, _io) => {
+      debugLog.log('call', 'inbound', d)
+      for (let i = 0; i < plugins.length; i++) {
+        const p = plugins[i]
+        if (!p?.tryCall) continue
+        const label = pluginLabels[i] ?? `plugin[${i}]`
+        debugLog.log('call', `tryCall(${label})`)
+        const r = await p.tryCall(d.channelId, d.method, d.args)
+        debugLog.log('call', `tryCall(${label}) result`, r ?? null)
+        if (r != null) return r
+      }
+      debugLog.log('call', 'no plugin handled call')
+      return { ok: false, error: 'no handler for this channel/method' }
     },
     fetch: (req, io) =>
       dispatchPluginHttp(req, io, plugins, pluginLabels, httpCtx, debugLog),

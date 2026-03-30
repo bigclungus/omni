@@ -22,6 +22,10 @@ export class OmniIpcClient {
     resolve: (msg: IpcOutbound) => void
     reject: (e: Error) => void
   }> = []
+  private readonly pendingCalls = new Map<string, {
+    resolve: (msg: Extract<IpcOutbound, { type: 'call_result' }>) => void
+    reject: (e: Error) => void
+  }>()
 
   private readonly connectionResolvers: Array<() => void> = []
 
@@ -115,6 +119,31 @@ export class OmniIpcClient {
       }
       if (msg.type === 'error') throw new Error(msg.message)
     }
+  }
+
+  async call(payload: {
+    channelId: string
+    method: string
+    args: Record<string, unknown>
+  }): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+    await this.waitUntilConnected()
+    const s = this.socket
+    if (!s) throw new Error('IPC not connected')
+    const id = crypto.randomUUID()
+    const req: IpcInbound = {
+      type: 'call',
+      id,
+      channelId: payload.channelId,
+      method: payload.method,
+      args: payload.args,
+    }
+    s.write(`${JSON.stringify(req)}\n`)
+    return new Promise((resolve, reject) => {
+      this.pendingCalls.set(id, {
+        resolve: msg => resolve({ ok: msg.ok, data: msg.data, error: msg.error }),
+        reject,
+      })
+    })
   }
 
   private async runConnectionLoop(): Promise<void> {
@@ -228,6 +257,10 @@ export class OmniIpcClient {
     for (const { reject } of w) {
       reject(reason)
     }
+    for (const { reject } of this.pendingCalls.values()) {
+      reject(reason)
+    }
+    this.pendingCalls.clear()
   }
 
   private notifyConnectionWaiters(): void {
@@ -262,6 +295,14 @@ export class OmniIpcClient {
       }
       if (msg.type === 'event') {
         this.options.onEvent(msg.event)
+        continue
+      }
+      if (msg.type === 'call_result') {
+        const pending = this.pendingCalls.get(msg.id)
+        if (pending) {
+          this.pendingCalls.delete(msg.id)
+          pending.resolve(msg)
+        }
         continue
       }
       this.pushControl(msg)

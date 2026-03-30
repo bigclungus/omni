@@ -12,10 +12,18 @@ export type IpcDispatchInbound = {
   args: Record<string, unknown>
 }
 
+export type IpcCallInbound = {
+  id: string
+  channelId: string
+  method: string
+  args: Record<string, unknown>
+}
+
 export type IpcInbound =
   | { type: 'hello'; token?: string; version?: number }
   | { type: 'get_context' }
   | { type: 'dispatch'; replyHandle: string; action: string; args: Record<string, unknown> }
+  | { type: 'call'; id: string; channelId: string; method: string; args: Record<string, unknown> }
 
 export type IpcOutbound =
   | { type: 'hello_ack' }
@@ -23,9 +31,14 @@ export type IpcOutbound =
   | { type: 'context'; channels: CapabilitySet[] }
   | { type: 'event'; event: OmnichannelEvent }
   | { type: 'dispatch_ack'; ok: boolean; detail?: string; error?: string }
+  | { type: 'call_result'; id: string; ok: boolean; data?: unknown; error?: string }
 
 export type DispatchResult =
   | { ok: true; detail?: string }
+  | { ok: false; error: string }
+
+export type CallResult =
+  | { ok: true; data: unknown }
   | { ok: false; error: string }
 
 export interface IpcHubOptions {
@@ -34,6 +47,7 @@ export interface IpcHubOptions {
   getCapabilities: () => CapabilitySet[]
   onClientReady?: () => void
   onDispatch?: (input: IpcDispatchInbound) => Promise<DispatchResult>
+  onCall?: (input: IpcCallInbound) => Promise<CallResult>
   debugLog?: GatewayDebugLogger
 }
 
@@ -235,6 +249,37 @@ export class IpcHub {
       return
     }
 
+    if (m.type === 'call') {
+      if (!this.sockets.has(socket)) {
+        this.send(socket, { type: 'error', message: 'send hello before call' })
+        return
+      }
+      const { id, channelId, method, args } = m
+      if (
+        typeof id !== 'string' ||
+        typeof channelId !== 'string' ||
+        typeof method !== 'string' ||
+        !args || typeof args !== 'object'
+      ) {
+        this.send(socket, { type: 'call_result', id: String(id ?? ''), ok: false, error: 'invalid call payload' })
+        return
+      }
+      const onCall = this.options.onCall
+      if (!onCall) {
+        this.send(socket, { type: 'call_result', id, ok: false, error: 'call not enabled' })
+        return
+      }
+      void onCall({ id, channelId, method, args }).then(r => {
+        this.options.debugLog?.log('ipc', 'call result', { id, ok: r.ok })
+        if (r.ok) {
+          this.send(socket, { type: 'call_result', id, ok: true, data: r.data })
+        } else {
+          this.send(socket, { type: 'call_result', id, ok: false, error: r.error })
+        }
+      })
+      return
+    }
+
     this.options.debugLog?.log('ipc', 'unknown message type', {
       type: (m as { type: string }).type,
     })
@@ -281,6 +326,7 @@ export function createIpcHub(opts: {
   getCapabilities: () => CapabilitySet[]
   onClientReady?: () => void
   onDispatch?: (input: IpcDispatchInbound) => Promise<DispatchResult>
+  onCall?: (input: IpcCallInbound) => Promise<CallResult>
   debugLog?: GatewayDebugLogger
 }): IpcHub {
   return new IpcHub({
@@ -289,6 +335,7 @@ export function createIpcHub(opts: {
     getCapabilities: opts.getCapabilities,
     onClientReady: opts.onClientReady,
     onDispatch: opts.onDispatch,
+    onCall: opts.onCall,
     debugLog: opts.debugLog,
   })
 }

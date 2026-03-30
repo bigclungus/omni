@@ -14,6 +14,7 @@ function actionsForPlugin(plugin: string): OmniDispatchAction[] {
 function capabilityForChannel(
   channelId: string,
   plugin: string,
+  calls: string[] | undefined,
 ): CapabilitySet {
   const ingress = true
   const egress =
@@ -24,14 +25,16 @@ function capabilityForChannel(
     ingress,
     egress,
     actions: actionsForPlugin(plugin),
+    ...(calls ? { calls } : {}),
   }
 }
 
 /** Builds MCP `omni_context` capability rows from channel plugin ids. */
 export function getCapabilitySetsForChannels(
   channels: Record<string, { plugin: string }>,
+  callsByPluginId: Map<string, string[]> = new Map(),
 ): CapabilitySet[] {
   return Object.entries(channels).map(([channelId, ch]) =>
-    capabilityForChannel(channelId, ch.plugin),
+    capabilityForChannel(channelId, ch.plugin, callsByPluginId.get(ch.plugin)),
   )
 }

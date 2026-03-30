@@ -18,7 +18,9 @@ import type { GatewayDebugLogger } from './debug-log.ts'
 import { serveGatewayHttp } from './http-listener.ts'
 import {
   createIpcHub,
+  type CallResult,
   type DispatchResult,
+  type IpcCallInbound,
   type IpcDispatchInbound,
   type IpcHub,
 } from './ipc.ts'
@@ -32,6 +34,7 @@ export interface StartGatewayOptions {
   config: LoadedGatewayConfig
   getCapabilities: () => CapabilitySet[]
   onDispatch: (input: IpcDispatchInbound, io: GatewayIo) => Promise<DispatchResult>
+  onCall?: (input: IpcCallInbound, io: GatewayIo) => Promise<CallResult>
   fetch: (req: Request, io: GatewayIo) => Response | Promise<Response>
   /** Runs after IPC hub is listening, before HTTP bind. */
   afterHubReady?: (io: GatewayIo) => Promise<void>
@@ -72,6 +75,7 @@ export async function startGateway(options: StartGatewayOptions): Promise<Gatewa
     getCapabilities: options.getCapabilities,
     onClientReady: flushQueue,
     onDispatch: d => options.onDispatch(d, { db, hub }),
+    onCall: options.onCall ? d => options.onCall!(d, { db, hub }) : undefined,
     debugLog: dbg,
   })
 

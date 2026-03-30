@@ -26,6 +26,8 @@ export interface CapabilitySet {
   egress: boolean
   /** Actions valid for `omni_dispatch` for this channel (phase 1 may be empty). */
   actions: OmniDispatchAction[]
+  /** Methods available via `omni_call` for this channel. */
+  calls?: string[]
 }
 
 export type OmniDispatchAction = 'reply' | 'react' | 'ack' | 'resolve' | 'noop'

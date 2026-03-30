@@ -42,6 +42,12 @@ const omniDispatchInput = z.object({
   args: z.record(z.unknown()),
 })
 
+const omniCallInput = z.object({
+  channelId: z.string(),
+  method: z.string(),
+  args: z.record(z.unknown()).default({}),
+})
+
 async function main(): Promise<void> {
   const socketPath = resolveIpcSocketPath()
   const token = process.env.OMNI_IPC_TOKEN?.trim()
@@ -169,6 +175,40 @@ async function main(): Promise<void> {
             text: r.detail ?? 'ok',
           },
         ],
+      }
+    },
+  )
+
+  registerTool(
+    'omni_call',
+    {
+      title: 'Omnichannel channel call',
+      description:
+        'Invoke a channel-specific capability by name. Available methods depend on the channel plugin ' +
+        '(e.g. discord: fetch_history, download_attachment). Returns JSON data on success.',
+      inputSchema: omniCallInput,
+    },
+    async (args: unknown) => {
+      const v = omniCallInput.safeParse(args)
+      if (!v.success) {
+        return {
+          content: [{ type: 'text', text: `Validation failed:\n${v.error.message}` }],
+          isError: true,
+        }
+      }
+      const r = await ipc.call({
+        channelId: v.data.channelId,
+        method: v.data.method,
+        args: v.data.args,
+      })
+      if (!r.ok) {
+        return {
+          content: [{ type: 'text', text: r.error ?? 'call failed' }],
+          isError: true,
+        }
+      }
+      return {
+        content: [{ type: 'text', text: JSON.stringify(r.data, null, 2) }],
       }
     },
   )

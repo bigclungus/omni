@@ -2,6 +2,7 @@ export type { DiscordRouteData } from './route.ts'
 export { newReplyHandleId } from './route.ts'
 
 export { executeDiscordDispatch } from './dispatch-exec.ts'
+export { executeDiscordCall } from './call-exec.ts'
 
 export type { DiscordIngressHub, DiscordIngressStore } from './types.ts'
 

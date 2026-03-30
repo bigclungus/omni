@@ -1,6 +1,6 @@
 import type { LoadedGatewayConfig } from './config.ts'
 import type { GatewayDebugLogger } from './debug-log.ts'
-import type { DispatchResult } from './ipc.ts'
+import type { CallResult, DispatchResult } from './ipc.ts'
 import type { GatewayIo } from './run.ts'
 
 /**
@@ -21,7 +21,11 @@ export interface GatewayPluginHttpContext {
   config: LoadedGatewayConfig
 }
 
+export { CallResult }
+
 export interface GatewayPluginHost {
+  /** Methods this plugin exposes via `omni_call`. Reported in `omni_context`. */
+  calls?: string[]
   prepare(): void
   afterHubReady(io: GatewayIo): Promise<void>
   tryDispatchRoute(
@@ -29,6 +33,15 @@ export interface GatewayPluginHost {
     action: string,
     args: Record<string, unknown>,
   ): Promise<DispatchResult | null>
+  /**
+   * Optional channel capability call (e.g. fetch_history, download_attachment).
+   * Return `null` to defer to the next plugin.
+   */
+  tryCall?(
+    channelId: string,
+    method: string,
+    args: Record<string, unknown>,
+  ): Promise<CallResult | null>
   /**
    * Optional HTTP ingress. Return `null` to defer to the next plugin; otherwise the response is sent.
    */

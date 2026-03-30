@@ -19,6 +19,7 @@ import {
 
 import { createDiscordClient } from './bot.ts'
 import type { DiscordRuntime, StartDiscordBotOptions } from './bot.ts'
+import { executeDiscordCall } from './call-exec.ts'
 import {
   assertDiscordChannelsHaveIds,
   getDiscordBotToken,
@@ -34,6 +35,7 @@ export interface DiscordHostModule {
   createDiscordClient: typeof createDiscordClient
   startDiscordBot: (options: StartDiscordBotOptions) => Promise<DiscordRuntime>
   executeDiscordDispatch: typeof executeDiscordDispatch
+  executeDiscordCall: typeof executeDiscordCall
 }
 
 export function parseDiscordSubscriptions(
@@ -98,6 +100,7 @@ export function createGatewayPluginHost(
   const mod = moduleExports as unknown as DiscordHostModule
   const dlog = options.debugLog
   const subscriptions = parseDiscordSubscriptions(options.channels)
+  const omniChannelIds = new Set(subscriptions.map(s => s.omniChannelId))
   const tokenSrc = () =>
     tokenSourceFromDocument(options.channels, options.document)
   const { replyHandleTtlMs } = options
@@ -177,9 +180,35 @@ export function createGatewayPluginHost(
     }
   }
 
+  const tryCall = async (
+    channelId: string,
+    method: string,
+    args: Record<string, unknown>,
+  ) => {
+    if (!omniChannelIds.has(channelId)) return null
+    const client = runtime?.client
+    if (!client) {
+      dlog?.log('discord', 'tryCall: client not running')
+      return { ok: false as const, error: 'discord client not running' }
+    }
+    // Resolve the Discord channel ID from the omni channel ID
+    const sub = subscriptions.find(s => s.omniChannelId === channelId)
+    if (!sub) return null
+    dlog?.log('discord', 'tryCall', { channelId, discordChannelId: sub.discordChannelId, method, args })
+    try {
+      return await mod.executeDiscordCall(client, sub.discordChannelId, method, args)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      dlog?.log('discord', 'tryCall error', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  }
+
   return {
+    calls: ['fetch_history', 'download_attachment'],
     prepare,
     afterHubReady,
     tryDispatchRoute,
+    tryCall,
   }
 }
