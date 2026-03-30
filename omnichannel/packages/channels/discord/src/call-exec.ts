@@ -26,9 +26,12 @@ async function fetchHistory(
     ? Math.min(Math.max(1, args.limit), 100)
     : 20
 
-  const ch = await client.channels.fetch(channelId).catch(() => null)
+  // Allow targeting a specific thread (pass thread.id from event payload)
+  const targetId = typeof args.threadId === 'string' ? args.threadId : channelId
+
+  const ch = await client.channels.fetch(targetId).catch(() => null)
   if (!ch?.isTextBased()) {
-    return { ok: false, error: `channel ${channelId} not found or not text-based` }
+    return { ok: false, error: `channel ${targetId} not found or not text-based` }
   }
 
   const messages = await ch.messages.fetch({ limit }).catch((e: unknown) => {

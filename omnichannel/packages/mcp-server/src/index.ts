@@ -64,8 +64,10 @@ async function main(): Promise<void> {
       },
       instructions:
         'Omnichannel events arrive as <channel source="omnichannel" event_id="..." channel_id="..." plugin="...">. ' +
-        'They are two-way: use `omni_context` to see channels and valid actions; use `omni_dispatch` with the ' +
-        '`reply_handle` from the event payload (when present) to reply or react on the originating platform.',
+        'They are two-way: use `omni_context` to see channels, valid actions, and channel-specific calls; ' +
+        'use `omni_dispatch` with the `reply_handle` from the event payload (when present) to reply or react on the originating platform; ' +
+        'use `omni_call` to invoke channel-specific capabilities such as fetch_history or download_attachment — ' +
+        'call `omni_context` first to discover what calls are available per channel.',
     },
   )
 
@@ -115,7 +117,7 @@ async function main(): Promise<void> {
     {
       title: 'Omnichannel context',
       description:
-        'Read-only view of configured channels and capabilities (ingress/egress, allowed actions).',
+        'Call this first when handling omni events to discover available actions and channel-specific calls (ingress/egress, allowed actions, omni_call methods).',
       inputSchema: omniContextInput,
     },
     async () => {
