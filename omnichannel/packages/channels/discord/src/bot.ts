@@ -162,47 +162,51 @@ export async function startDiscordBot(
   }
 
   client.on('messageCreate', async (msg: Message) => {
-    // Stop typing indicator when the bot sends its reply
-    if (msg.author.id === client.user?.id) {
-      stopTyping(msg.channelId)
-      return
+    try {
+      // Stop typing indicator when the bot sends its reply
+      if (msg.author.id === client.user?.id) {
+        stopTyping(msg.channelId)
+        return
+      }
+      if (msg.author.bot) return
+
+      const omniChannelId = lookupOmniChannel(msg.channelId, msg.channel)
+      if (!omniChannelId) return
+
+      const replyHandle = newReplyHandleId()
+      const route: DiscordRouteData = {
+        kind: 'discord',
+        guildId: msg.guildId ?? '',
+        channelId: msg.channelId,
+        messageId: msg.id,
+      }
+
+      const expiresAt = Date.now() + replyHandleTtlMs
+      store.insertReplyHandle(replyHandle, omniChannelId, JSON.stringify(route), expiresAt)
+
+      const payload = await buildDiscordMessagePayload(msg, replyHandle, omniChannelId)
+      const event: OmnichannelEvent = {
+        id: crypto.randomUUID(),
+        channelId: omniChannelId,
+        plugin: 'channel-discord',
+        receivedAt: new Date().toISOString(),
+        payload,
+      }
+
+      dlog?.log('discord', 'messageCreate → omnichannel event', {
+        omniChannelId,
+        discordChannelId: msg.channelId,
+        messageId: msg.id,
+        replyHandle,
+        ipcClients: hub.clientCount,
+        broadcast: hub.clientCount > 0,
+      })
+
+      emitEvent(event, expiresAt)
+      startTyping(msg.channelId, msg.channel)
+    } catch (err) {
+      process.stderr.write(`omnichannel channel-discord: messageCreate error: ${err}\n`)
     }
-    if (msg.author.bot) return
-
-    const omniChannelId = lookupOmniChannel(msg.channelId, msg.channel)
-    if (!omniChannelId) return
-
-    const replyHandle = newReplyHandleId()
-    const route: DiscordRouteData = {
-      kind: 'discord',
-      guildId: msg.guildId ?? '',
-      channelId: msg.channelId,
-      messageId: msg.id,
-    }
-
-    const expiresAt = Date.now() + replyHandleTtlMs
-    store.insertReplyHandle(replyHandle, omniChannelId, JSON.stringify(route), expiresAt)
-
-    const payload = await buildDiscordMessagePayload(msg, replyHandle, omniChannelId)
-    const event: OmnichannelEvent = {
-      id: crypto.randomUUID(),
-      channelId: omniChannelId,
-      plugin: 'channel-discord',
-      receivedAt: new Date().toISOString(),
-      payload,
-    }
-
-    dlog?.log('discord', 'messageCreate → omnichannel event', {
-      omniChannelId,
-      discordChannelId: msg.channelId,
-      messageId: msg.id,
-      replyHandle,
-      ipcClients: hub.clientCount,
-      broadcast: hub.clientCount > 0,
-    })
-
-    emitEvent(event, expiresAt)
-    startTyping(msg.channelId, msg.channel)
   })
 
   client.on('messageReactionAdd', async (reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) => {
