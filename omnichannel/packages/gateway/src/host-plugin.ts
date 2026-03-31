@@ -34,6 +34,15 @@ export interface InvokeContext {
   route?: Record<string, unknown>
 }
 
+export interface PluginChannelHealth {
+  /** Omni channel ID. */
+  channelId: string
+  /** Whether the plugin has an active connection for this channel. */
+  connected: boolean
+  /** ISO timestamp of the last received message, if tracked. */
+  lastMessageAt?: string
+}
+
 export interface GatewayPluginHost {
   /**
    * Capabilities this plugin exposes, keyed by capability name.
@@ -55,6 +64,11 @@ export interface GatewayPluginHost {
     io: GatewayIo,
     ctx: GatewayPluginHttpContext,
   ): Promise<Response | null>
+  /**
+   * Optional health report for each channel this plugin manages.
+   * Used by the `GET /health/channels` endpoint.
+   */
+  getHealth?(): PluginChannelHealth[]
 }
 
 export type CreateGatewayPluginHost = (

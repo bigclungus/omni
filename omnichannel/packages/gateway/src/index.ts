@@ -16,6 +16,7 @@ export type {
   GatewayPluginHttpContext,
   InvokeContext,
   InvokeResult,
+  PluginChannelHealth,
 } from './host-plugin.ts'
 export {
   createGatewayDebugLogger,

@@ -175,8 +175,13 @@ async function main(): Promise<void> {
       debugLog.log('invoke', 'no plugin handled invoke')
       return { ok: false, error: 'no handler for this channel/capability' }
     },
-    fetch: (req, io) =>
-      dispatchPluginHttp(req, io, plugins, pluginLabels, httpCtx, debugLog),
+    fetch: (req, io) => {
+      const url = new URL(req.url)
+      if (req.method === 'GET' && url.pathname === '/health/channels') {
+        return Promise.resolve(handleHealthChannels(plugins, pluginLabels, debugLog))
+      }
+      return dispatchPluginHttp(req, io, plugins, pluginLabels, httpCtx, debugLog)
+    },
     afterHubReady: async io => {
       for (let i = 0; i < plugins.length; i++) {
         const p = plugins[i]
@@ -187,6 +192,25 @@ async function main(): Promise<void> {
       }
     },
   })
+}
+
+function handleHealthChannels(
+  plugins: GatewayPluginHost[],
+  pluginLabels: string[],
+  debugLog: GatewayDebugLogger,
+): Response {
+  const channels: unknown[] = []
+  for (let i = 0; i < plugins.length; i++) {
+    const plugin = plugins[i]
+    if (!plugin?.getHealth) continue
+    const label = pluginLabels[i] ?? `plugin[${i}]`
+    debugLog.log('http', `getHealth(${label})`)
+    const rows = plugin.getHealth()
+    for (const row of rows) {
+      channels.push({ plugin: label, ...row })
+    }
+  }
+  return jsonResponse({ ok: true, channels, checkedAt: new Date().toISOString() })
 }
 
 function dispatchPluginHttp(

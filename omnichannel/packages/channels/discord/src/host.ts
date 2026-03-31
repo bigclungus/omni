@@ -12,6 +12,7 @@ import type {
   InvokeContext,
   InvokeResult,
   IpcHub,
+  PluginChannelHealth,
 } from '@omnibot/gateway'
 import {
   deleteQueuedEvent as dbDeleteQueuedEvent,
@@ -115,31 +116,6 @@ function tokenSourceFromDocument(
   }
 }
 
-function wrapDiscordStore(db: Database): DiscordIngressStore {
-  return {
-    insertReplyHandle(id, omniChannelId, routeJson, expiresAt): void {
-      insertReplyHandle(db, id, omniChannelId, routeJson, expiresAt)
-    },
-    insertQueuedEvent(event, expiresAt): void {
-      dbInsertQueuedEvent(db, event, expiresAt)
-    },
-    deleteQueuedEvent(id): void {
-      dbDeleteQueuedEvent(db, id)
-    },
-  }
-}
-
-function wrapDiscordHub(hub: IpcHub): DiscordIngressHub {
-  return {
-    get clientCount() {
-      return hub.clientCount
-    },
-    broadcastEvent(event): void {
-      hub.broadcast({ type: 'event', event })
-    },
-  }
-}
-
 export function createGatewayPluginHost(
   moduleExports: Record<string, unknown>,
   options: GatewayPluginHostContext,
@@ -152,6 +128,33 @@ export function createGatewayPluginHost(
   const { replyHandleTtlMs } = options
 
   let runtime: DiscordRuntime | null = null
+  let lastMessageAt: Date | null = null
+
+  function wrapDiscordStoreTracked(db: Database): DiscordIngressStore {
+    return {
+      insertReplyHandle(id, omniChannelId, routeJson, expiresAt): void {
+        insertReplyHandle(db, id, omniChannelId, routeJson, expiresAt)
+      },
+      insertQueuedEvent(event, expiresAt): void {
+        lastMessageAt = new Date()
+        dbInsertQueuedEvent(db, event, expiresAt)
+      },
+      deleteQueuedEvent(id): void {
+        dbDeleteQueuedEvent(db, id)
+      },
+    }
+  }
+
+  function wrapDiscordHubTracked(hub: IpcHub): DiscordIngressHub {
+    return {
+      get clientCount() {
+        return hub.clientCount
+      },
+      broadcastEvent(event): void {
+        hub.broadcast({ type: 'event', event })
+      },
+    }
+  }
 
   const prepare = (): void => {
     dlog?.log('discord', 'prepare', {
@@ -177,8 +180,8 @@ export function createGatewayPluginHost(
     const token = mod.getDiscordBotToken(tokenSrc())
     if (!token) return
     dlog?.log('discord', 'afterHubReady: startDiscordBot')
-    const store = wrapDiscordStore(io.db)
-    const hub = wrapDiscordHub(io.hub)
+    const store = wrapDiscordStoreTracked(io.db)
+    const hub = wrapDiscordHubTracked(io.hub)
     runtime = await mod.startDiscordBot({
       subscriptions,
       store,
@@ -232,10 +235,18 @@ export function createGatewayPluginHost(
     }
   }
 
+  const getHealth = (): PluginChannelHealth[] =>
+    subscriptions.map(s => ({
+      channelId: s.omniChannelId,
+      connected: runtime?.client.isReady() ?? false,
+      ...(lastMessageAt ? { lastMessageAt: lastMessageAt.toISOString() } : {}),
+    }))
+
   return {
     capabilities: DISCORD_CAPABILITIES,
     prepare,
     afterHubReady,
     invoke,
+    getHealth,
   }
 }
