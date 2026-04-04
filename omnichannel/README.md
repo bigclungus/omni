@@ -43,6 +43,8 @@ Run the gateway from the **same working directory** you use for MCP (or point bo
 
 **HTTP bind:** by default the gateway listens on **`127.0.0.1`** only (`gateway.httpHostname` in `omni.yaml`). Override with `httpHostname: "0.0.0.0"` only if you need to reach the webhook port from another machine.
 
+**Omni-to-omni (`channel-o2o`):** see [packages/channels/o2o/README.md](packages/channels/o2o/README.md).
+
 ## Docs
 
 - [Channels reference](https://code.claude.com/docs/en/channels-reference) — `claude/channel` notifications and two-way tools.

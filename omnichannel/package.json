@@ -6,12 +6,13 @@
   "dependencies": {
     "@omnibot/channel-alertmanager": "workspace:*",
     "@omnibot/channel-discord": "workspace:*",
+    "@omnibot/channel-o2o": "workspace:*",
     "@omnibot/channel-webhook": "workspace:*",
     "@omnibot/core": "workspace:*",
     "@omnibot/gateway": "workspace:*"
   },
   "scripts": {
-    "test": "bun test packages/core packages/channels/alertmanager tests/integration",
+    "test": "bun test packages/core packages/channels/alertmanager packages/channels/o2o tests/integration",
     "test:core": "bun test packages/core",
     "test:integration": "bun test tests/integration",
     "gateway": "bun run packages/gateway/src/cli.ts",

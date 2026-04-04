@@ -7,6 +7,7 @@
       "dependencies": {
         "@omnibot/channel-alertmanager": "workspace:*",
         "@omnibot/channel-discord": "workspace:*",
+        "@omnibot/channel-o2o": "workspace:*",
         "@omnibot/channel-webhook": "workspace:*",
         "@omnibot/core": "workspace:*",
         "@omnibot/gateway": "workspace:*",
@@ -31,6 +32,14 @@
         "@omnibot/core": "workspace:*",
         "@omnibot/gateway": "workspace:*",
         "discord.js": "^14.25.1",
+      },
+    },
+    "packages/channels/o2o": {
+      "name": "@omnibot/channel-o2o",
+      "version": "0.0.0",
+      "dependencies": {
+        "@omnibot/core": "workspace:*",
+        "@omnibot/gateway": "workspace:*",
       },
     },
     "packages/channels/webhook": {
@@ -90,6 +99,8 @@
     "@omnibot/channel-alertmanager": ["@omnibot/channel-alertmanager@workspace:packages/channels/alertmanager"],
 
     "@omnibot/channel-discord": ["@omnibot/channel-discord@workspace:packages/channels/discord"],
+
+    "@omnibot/channel-o2o": ["@omnibot/channel-o2o@workspace:packages/channels/o2o"],
 
     "@omnibot/channel-webhook": ["@omnibot/channel-webhook@workspace:packages/channels/webhook"],
 

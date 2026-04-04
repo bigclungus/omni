@@ -36,3 +36,17 @@ channels:
   #   plugin: channel-discord
   #   discordChannelId: "1234567890123456789"
   #   # token: "optional override; otherwise use top-level discord.token or DISCORD_BOT_TOKEN"
+
+  # Package: `@omnibot/channel-o2o` — omni-to-omni between two gateway processes (separate omni.yaml, port, db, IPC each).
+  # Egress: `peerUrl` + optional `headers`, `timeoutMs` — `omni_dispatch` capability `send` POSTs JSON to the peer.
+  # Ingress: `ingressSecret` — peers POST JSON to http://<host>:<port>/o2o/<channelId> with Authorization: Bearer <ingressSecret>.
+  # Typical pair: gateway A has an egress channel whose peerUrl is gateway B’s /o2o/<inboxChannelId>; gateway B defines that inbox with the same shared secret in `headers` and `ingressSecret`.
+  # o2o_out:
+  #   plugin: channel-o2o
+  #   peerUrl: http://127.0.0.1:8081/o2o/o2o_in
+  #   timeoutMs: 120000
+  #   headers:
+  #     Authorization: Bearer replace-with-shared-secret
+  # o2o_in:
+  #   plugin: channel-o2o
+  #   ingressSecret: replace-with-shared-secret
