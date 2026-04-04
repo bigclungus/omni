@@ -5,6 +5,7 @@
   "workspaces": ["packages/*", "packages/channels/*"],
   "dependencies": {
     "@omnibot/channel-alertmanager": "workspace:*",
+    "@omnibot/channel-clungcord": "workspace:*",
     "@omnibot/channel-discord": "workspace:*",
     "@omnibot/channel-o2o": "workspace:*",
     "@omnibot/channel-webhook": "workspace:*",

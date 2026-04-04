@@ -205,6 +205,9 @@ export class IpcHub {
         } else {
           this.send(socket, { type: 'invoke_result', id, ok: false, error: r.error })
         }
+      }).catch((err: unknown) => {
+        process.stderr.write(`omnichannel gateway: invoke error id=${id}: ${String(err)}\n`)
+        this.send(socket, { type: 'invoke_result', id, ok: false, error: String(err) })
       })
       return
     }
