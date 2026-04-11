@@ -113,7 +113,5 @@ export async function startGateway(options: StartGatewayOptions): Promise<Gatewa
       `ipc ${ipcPath} db=${dbPath}\n`,
   )
 
-  void server
-
   return io
 }

@@ -18,7 +18,6 @@ export function getCapabilitySetsForChannels(
 
   return Object.entries(channels).map(([channelId, ch]) => {
     const capabilities = capsByPluginId.get(ch.plugin) ?? {}
-    const egress = Object.values(capabilities).some(c => !c.requiresReplyHandle || c.requiresReplyHandle)
     return {
       channelId,
       plugin: ch.plugin as OmnichannelPluginId,

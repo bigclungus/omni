@@ -149,10 +149,6 @@ export async function startDiscordBot(
     void channel.sendTyping().catch(() => {})
   }
 
-  function stopTyping(_channelId: string): void {
-    // Nothing to cancel — Discord typing expires naturally.
-  }
-
   function emitEvent(event: OmnichannelEvent, expiresAt: number): void {
     store.insertQueuedEvent(event, expiresAt)
     if (hub.clientCount > 0) {
@@ -163,11 +159,7 @@ export async function startDiscordBot(
 
   client.on('messageCreate', async (msg: Message) => {
     try {
-      // Stop typing indicator when the bot sends its reply
-      if (msg.author.id === client.user?.id) {
-        stopTyping(msg.channelId)
-        return
-      }
+      if (msg.author.id === client.user?.id) return
       if (msg.author.bot) return
 
       const omniChannelId = lookupOmniChannel(msg.channelId, msg.channel)

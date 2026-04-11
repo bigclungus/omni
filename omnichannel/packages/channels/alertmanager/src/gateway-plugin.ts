@@ -20,9 +20,10 @@ export function createGatewayPluginHost(
   _ctx: GatewayPluginHostContext,
 ): GatewayPluginHost {
   return {
+    capabilities: {},
     prepare() {},
     async afterHubReady() {},
-    async tryDispatchRoute() {
+    async invoke() {
       return null
     },
     async handleHttp(req: Request, io: GatewayIo, httpCtx: GatewayPluginHttpContext) {
