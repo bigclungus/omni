@@ -89,6 +89,22 @@ const DISCORD_CAPABILITIES: Record<string, CapabilityDef> = {
       url: { type: 'string', required: true, description: 'Attachment URL from the event payload' },
     },
   },
+  voice_join: {
+    description: 'Join a Discord voice channel and start a low-latency OpenAI Realtime voice conversation. The bot stays until voice_leave is called.',
+    requiresReplyHandle: false,
+    args: {
+      channelId: { type: 'string', required: true, description: 'Discord voice channel ID to join' },
+      instructions: { type: 'string', required: false, description: 'System instructions for the realtime model' },
+      voice: { type: 'string', required: false, description: 'OpenAI Realtime voice name (e.g. alloy, echo, shimmer)' },
+    },
+  },
+  voice_leave: {
+    description: 'Leave the Discord voice channel and end the active realtime voice session for a guild.',
+    requiresReplyHandle: false,
+    args: {
+      guildId: { type: 'string', required: false, description: 'Guild ID to disconnect from; defaults to the only active session' },
+    },
+  },
 }
 
 export function parseDiscordSubscriptions(

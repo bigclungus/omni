@@ -109,6 +109,7 @@ export function createDiscordClient(): Client {
       /** Privileged: enable "Message Content Intent" in the Discord Developer Portal (Bot tab). */
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.GuildMessageReactions,
+      GatewayIntentBits.GuildVoiceStates,
     ],
     partials: [Partials.Channel, Partials.Message, Partials.Reaction],
   })

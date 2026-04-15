@@ -5,6 +5,8 @@ import type { Client } from 'discord.js'
 
 import type { InvokeResult } from '@omnibot/gateway'
 
+import { voiceJoin, voiceLeave } from './voice.ts'
+
 export async function executeDiscordCall(
   client: Client,
   channelId: string,
@@ -19,6 +21,12 @@ export async function executeDiscordCall(
   }
   if (method === 'download_attachment') {
     return downloadAttachment(client, args)
+  }
+  if (method === 'voice_join') {
+    return voiceJoin(client, args)
+  }
+  if (method === 'voice_leave') {
+    return voiceLeave(client, args)
   }
   return { ok: false, error: `unknown method: ${method}` }
 }
