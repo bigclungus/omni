@@ -46,9 +46,5 @@ export async function executeDiscordDispatch(
     return 'ok'
   }
 
-  if (action === 'resolve') {
-    throw new Error('resolve is not supported for Discord')
-  }
-
   throw new Error(`unknown action: ${action}`)
 }
